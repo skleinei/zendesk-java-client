@@ -13,7 +13,6 @@ import com.ning.http.client.Realm;
 import com.ning.http.client.Request;
 import com.ning.http.client.RequestBuilder;
 import com.ning.http.client.Response;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.zendesk.client.v2.model.Attachment;
@@ -28,6 +27,9 @@ import org.zendesk.client.v2.model.User;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.nio.charset.Charset;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -36,6 +38,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.TimeZone;
 import java.util.concurrent.ExecutionException;
 
 /**
@@ -43,7 +46,7 @@ import java.util.concurrent.ExecutionException;
  * @since 04/04/2013 13:08
  */
 public class ZenDesk implements Closeable {
-    private static final String JSON = "application/json";
+    private static final String JSON = "application/json; charset=utf-8";
     private final boolean closeClient;
     private final AsyncHttpClient client;
     private final Realm realm;
@@ -96,6 +99,11 @@ public class ZenDesk implements Closeable {
     public Ticket getTicket(int id) {
         return complete(submit(req("GET", tmpl("/tickets/{id}.json").set("id", id)), handle(Ticket.class,
                 "ticket")));
+    }
+
+    public Iterable<Ticket> lookupTicketByExternalId(String externalId) {
+        return new PagedIterable<Ticket>(tmpl("/tickets.json{?external_id}").set("external_id", externalId),
+                handleList(Ticket.class, "tickets"));
     }
 
     public void deleteTicket(Ticket ticket) {
@@ -696,7 +704,7 @@ public class ZenDesk implements Closeable {
         }
         builder.setUrl(template.toString());
         builder.addHeader("Content-type", contentType);
-        builder.setBody(body);
+        builder.setBody(body.getBytes(Charset.forName("UTF-8")));
         return builder.build();
     }
 
@@ -918,8 +926,19 @@ public class ZenDesk implements Closeable {
         mapper.enable(DeserializationFeature.READ_ENUMS_USING_TO_STRING);
         mapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
         mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+        mapper.setDateFormat(createIsoDateFormat());
         return mapper;
     }
+
+
+    private static DateFormat createIsoDateFormat() {
+        TimeZone tz = TimeZone.getTimeZone("UTC");
+        // this ignores time zone information, as java does not understand 'Z'..
+        DateFormat df = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
+        df.setTimeZone(tz);
+        return df;
+    }
+
 
     //////////////////////////////////////////////////////////////////////
     // Helper classes
